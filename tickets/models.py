@@ -145,9 +145,6 @@ class BaseTicket(models.Model):
         return f"{self.get_ticket_type_display()} - {self.name} ({self.price} {self.currency})"    
 
 
-
-
-
 class Seat(models.Model):
     seat_number  = models.CharField(max_length=10)
     is_booked = models.BooleanField(default=False)
@@ -171,3 +168,5 @@ class BusTicket(BaseTicket):
 
     def available_seat_count(self):
         return self.seats.filter(is_booked = False).count()
+    
+
