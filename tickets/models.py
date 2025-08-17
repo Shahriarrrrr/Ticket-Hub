@@ -170,3 +170,16 @@ class BusTicket(BaseTicket):
         return self.seats.filter(is_booked = False).count()
     
 
+class CachedBusSearch(models.Model):
+    from_city = models.CharField(max_length=100)
+    to_city = models.CharField(max_length=100)
+    date_of_journey = models.DateField()
+    results = models.JSONField()
+    fetched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['from_city', "to_city", 'date_of_journey'])
+        ]
+    def __str__(self):
+        return f"{self.from_city} → {self.to_city} ({self.date_of_journey})"    

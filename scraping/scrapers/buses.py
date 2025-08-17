@@ -159,32 +159,30 @@ from tickets.models import BusTicket, Seat
 
 
 
-def scrape_shohoz_buses():
+def scrape_shohoz_buses(from_city, to_city, date_of_journey):
+    print("Hitting")
     url = "https://webapi.shohoz.com/v1.0/web/booking/bus/search-trips"
     params = {
-        "from_city": "Dhaka",
-        "to_city": "Chittagong",
-        "date_of_journey": "28-Aug-2025",
+        "from_city": from_city,
+        "to_city": to_city,
+        "date_of_journey": date_of_journey,
         "dor": ""
     }
 
     response = requests.get(url, params=params)
-
     if response.status_code != 200:
         print(f"Failed to fetch data: {response.status_code}")
-        return
+        return []
 
     data = response.json()
     trips = data.get("data", {}).get("trips", {}).get("list", [])
 
     if not trips:
         print("No bus data found.")
-        return
+        return []
 
+    buses_list = []  # <- create a list to return
     bus_ct = ContentType.objects.get_for_model(BusTicket)  # Needed for GenericForeignKey
-
-    print(f"{'Bus Name':30} {'Departure':10} {'Arrival':10} {'Price (BDT)':10}")
-    print("="*70)
 
     for trip in trips:
         try:
@@ -222,12 +220,22 @@ def scrape_shohoz_buses():
                     object_id=ticket.id
                 )
 
-            print(f"{ticket.bus_name:30} {start_time.strftime('%H:%M'):10} {end_time.strftime('%H:%M'):10} {ticket.price:10}")
+            # Append data to list
+            buses_list.append({
+                "bus_name": ticket.bus_name,
+                "departure": start_time.strftime("%H:%M"),
+                "arrival": end_time.strftime("%H:%M"),
+                "price": float(ticket.price)
+            })
 
         except Exception as e:
             print(f"Error processing bus {trip.get('trip_number')}: {e}")
 
-    print("All bus data saved to database.")
+    return buses_list  # <- return the list
 
 if __name__ == "__main__":
-    scrape_shohoz_buses()
+    from_city = input("Enter origin city: ")
+    to_city = input("Enter destination city: ")
+    date_of_journey = input("Enter journey date (dd-MMM-yyyy, e.g. 28-Aug-2025): ")
+    
+    scrape_shohoz_buses(from_city, to_city, date_of_journey)
