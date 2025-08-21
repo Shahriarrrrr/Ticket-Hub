@@ -4,6 +4,35 @@ from tickets.models import CachedBusSearch
 from scraping.scrapers.buses import scrape_shohoz_buses
 from django.utils import timezone
 from datetime import timedelta, datetime
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter(
+            'from_city',
+            openapi.IN_QUERY,
+            description="Departure city",
+            type=openapi.TYPE_STRING,
+            required=True
+        ),
+        openapi.Parameter(
+            'to_city',
+            openapi.IN_QUERY,
+            description="Destination city",
+            type=openapi.TYPE_STRING,
+            required=True
+        ),
+        openapi.Parameter(
+            'date_of_journey',
+            openapi.IN_QUERY,
+            description="Date of journey in format dd-MMM-yyyy (e.g., 28-Aug-2025)",
+            type=openapi.TYPE_STRING,
+            required=True
+        ),
+    ]
+)
 
 @api_view(['GET'])
 def search_buses(request):
@@ -51,3 +80,4 @@ def search_buses(request):
         )
 
     return Response(buses)
+
