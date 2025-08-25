@@ -1,83 +1,49 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from tickets.models import CachedBusSearch
 from scraping.scrapers.buses import scrape_shohoz_buses
-from django.utils import timezone
-from datetime import timedelta, datetime
+from django.core.cache import cache
+from datetime import datetime, timedelta
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+import json
 
 @swagger_auto_schema(
     method='get',
     manual_parameters=[
-        openapi.Parameter(
-            'from_city',
-            openapi.IN_QUERY,
-            description="Departure city",
-            type=openapi.TYPE_STRING,
-            required=True
-        ),
-        openapi.Parameter(
-            'to_city',
-            openapi.IN_QUERY,
-            description="Destination city",
-            type=openapi.TYPE_STRING,
-            required=True
-        ),
-        openapi.Parameter(
-            'date_of_journey',
-            openapi.IN_QUERY,
-            description="Date of journey in format dd-MMM-yyyy (e.g., 28-Aug-2025)",
-            type=openapi.TYPE_STRING,
-            required=True
-        ),
+        openapi.Parameter('from_city', openapi.IN_QUERY, description="Departure city", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('to_city', openapi.IN_QUERY, description="Destination city", type=openapi.TYPE_STRING, required=True),
+        openapi.Parameter('date_of_journey', openapi.IN_QUERY, description="Date of journey in format dd-MMM-yyyy (e.g., 28-Aug-2025)", type=openapi.TYPE_STRING, required=True),
     ]
 )
-
 @api_view(['GET'])
 def search_buses(request):
-    # 1. Get query params
     from_city = request.GET.get("from_city")
     to_city = request.GET.get("to_city")
-    date_str = request.GET.get("date_of_journey")  # e.g., '28-Aug-2025'
-    
+    date_str = request.GET.get("date_of_journey")
+
     if not from_city or not to_city or not date_str:
         return Response({"error": "from_city, to_city, and date_of_journey are required"}, status=400)
 
-    # Remove surrounding quotes if present
     date_str = date_str.strip('"')
-    
     try:
-        # Convert to datetime.date object
         date_obj = datetime.strptime(date_str, "%d-%b-%Y").date()
     except ValueError:
         return Response({"error": "Invalid date format. Use dd-MMM-yyyy, e.g., 28-Aug-2025"}, status=400)
 
-    # 2. Check cache (valid for 15 minutes)
-    cache_duration = timedelta(minutes=10)
-    cache = CachedBusSearch.objects.filter(
-        from_city__iexact=from_city,
-        to_city__iexact=to_city,
-        date_of_journey=date_obj
-    ).order_by('-fetched_at').first()
+    # Redis key: unique per from_city, to_city, date
+    cache_key = f"buses:{from_city.lower()}:{to_city.lower()}:{date_str}"
 
-    if cache and cache.fetched_at + cache_duration > timezone.now():
-        print("Time not up")
-        return Response(cache.results)
+    # Try getting data from Redis first
+    buses = cache.get(cache_key)
+    if buses:
+        print("Cache hit")
+        return Response(buses)
 
-    # 3. Fetch fresh data from Shohoz
-    date_for_api = date_obj.strftime("%Y-%m-%d")  # format Shohoz expects
-    print(f"IN{date_str}")
+    # Cache miss → fetch fresh data
     buses = scrape_shohoz_buses(from_city, to_city, date_str)
 
-    # 4. Save to cache
-    if buses:  # only cache if we got results
-        CachedBusSearch.objects.create(
-            from_city=from_city,
-            to_city=to_city,
-            date_of_journey=date_obj,
-            results=buses
-        )
+    # Save to Redis for 10 minutes
+    if buses:
+        cache.set(cache_key, buses, timeout=600)  # timeout in seconds
 
     return Response(buses)
-
